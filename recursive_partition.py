@@ -19,21 +19,21 @@ class partition_node :
         self.children = children
     def __lt__(self, other) :
         return self.proportion < other.proportion
+    def __repr__(self) :
+        return 'partition_node({}, {})'.format(self.proportion, self.children)
 
-def partition(nodes, rect, rooms) :
-    print('partition', nodes)
+class partition_rect :
+    def __init__(self, rect, children) :
+        self.rect = rect
+        self.children = children
+    def __repr__(self) :
+        return 'partition_rect({}, {})'.format(self.rect, self.children)
+
+def partition(nodes, rect) :
     if len(nodes) == 0 :
-        print('skip')
-        pass
+        return list()
     elif len(nodes) == 1 :
-        rooms.append(rect)
-        #if points.get(rect.x) == None :
-        #    points[rect.x] = set()
-        #points[rect.x].add(rect.y + rect.height)
-        #if points.get(rect.y) == None :
-        #    points[rect.y] = set()
-        #points[rect.y].add(rect.x + rect.width)
-        partition(nodes[0].children, rect, rooms)
+        return [partition_rect(rect, partition(nodes[0].children, rect))]
     else :
         total_proportion = 0
         for node in nodes :
@@ -51,7 +51,8 @@ def partition(nodes, rect, rooms) :
             current_width = (cumulative_proportion / total_proportion) * width_length
             current_heights = list()
             for j in range(i + 1) :
-                current_heights.append((nodes[i].proportion / cumulative_proportion) * height_length)
+                # potential rounding error : sum != height_length
+                current_heights.append((nodes[j].proportion / cumulative_proportion) * height_length)
             current_ratio_error = math.log2((i + 1) * current_width / height_length)
             if abs(current_ratio_error) <= abs(best_ratio_error) :
                 best_width = current_width
@@ -61,22 +62,34 @@ def partition(nodes, rect, rooms) :
                     break
             else :
                 break
+        current_partition = list()
         cumulative_height = 0
         for i in range(len(best_heights)) :
             current_height_start = height_start + cumulative_height
             if rect.width >= rect.height :
-                current_room = rectangle(width_start, current_height_start, best_width, best_heights[i])
+                current_rect = rectangle(width_start, current_height_start, best_width, best_heights[i])
             else :
-                current_room = rectangle(current_height_start, width_start, best_heights[i], best_width)
-            rooms.append(current_room)
-            partition(nodes[i].children, current_room, rooms)
+                current_rect = rectangle(current_height_start, width_start, best_heights[i], best_width)
+            current_partition.append(partition_rect(current_rect, partition(nodes[i].children, current_rect)))
+            # potential rounding error ?
             cumulative_height += best_heights[i]
         if rect.width >= rect.height :
-            partition(nodes[len(best_heights):], rectangle(width_start + best_width, height_start, width_length - best_width, height_length), rooms)
+            current_partition.extend(partition(nodes[len(best_heights):], rectangle(width_start + best_width, height_start, width_length - best_width, height_length)))
         else :
-            partition(nodes[len(best_heights):], rectangle(height_start, width_start + best_width, height_length, width_length - best_width))
+            current_partition.extend(partition(nodes[len(best_heights):], rectangle(height_start, width_start + best_width, height_length, width_length - best_width)))
+        return current_partition
 
-tree = [partition_node(1, [partition_node(3, list()), partition_node(2, list()), partition_node(1, list())])]
-rooms = list()
-partition(tree, rectangle(0, 0, 1, 1), rooms)
-print(rooms)
+def draw(prect) :
+    (x, y, width, height) = (int(prect.rect.x), int(prect.rect.y), int(prect.rect.width), int(prect.rect.height))
+    array = np.ones((width, height, 3), dtype = np.double)
+    array[1:, 1:, :] = 0
+    for c in prect.children :
+        (cx, cy, cwidth, cheight) = (int(c.rect.x), int(c.rect.y), int(c.rect.width), int(c.rect.height))
+        array[cx : cx + cwidth, cy : cy + cheight, :] = draw(c)
+    return array
+
+tree = [partition_node(1, [partition_node(3, [partition_node(1, list()), partition_node(1, list())]), partition_node(2, list()), partition_node(3, list())])]
+partition_result = partition(tree, rectangle(0, 0, 100, 175))
+print(partition_result)
+plt.imshow(draw(partition_result[0]))
+plt.show()
