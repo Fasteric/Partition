@@ -211,67 +211,6 @@ def geometrize(room_index_dictionary, partition_graph, room_point_dictionary) :
         room.geometry = geometry
     return room_point_dictionary
 
-# todo: pathfinding: connect rooms by finding path
-# what the input should be ?
-# todo: return path information
-def pathfinding(room_index_dictionary, partition_graph) :
-    #print('pathfinding')
-    connected = set()
-    paths = list()
-    for start_room in room_index_dictionary.values() :
-        #print('proper area')
-        for end_room in start_room.connection :
-            #print('end area')
-            if (start_room, end_room) in connected or (end_room, start_room) in connected :
-                continue
-            least_cost = dict()
-            queue = pq()
-            for i in range(4) :
-                least_cost[start_room.rectangle[i]] = (0, None)
-                queue.put((0, start_room.rectangle[i]))
-            while queue.empty() == False :
-                (cumulative_cost, current_point) = queue.get()
-                #print('pop', cumulative_cost, current_point)
-                if current_point in end_room.rectangle :
-                    end_point = current_point
-                    #print('pop path found')
-                    break
-                if least_cost[current_point][0] < cumulative_cost :
-                    #print('pop better partial path exist')
-                    continue
-                for (adjacent_point, weight) in partition_graph[current_point] :
-                    if weight == 0 :
-                        continue
-                    cost = least_cost[current_point][0] + math.pow(2, weight) * math.sqrt(math.pow(adjacent_point.x - current_point.x, 2) + math.pow(adjacent_point.y - current_point.y, 2))
-                    #print('edge', cost, adjacent_point)
-                    if adjacent_point in least_cost and least_cost[adjacent_point][0] < cost :
-                        #print('better partial path exist')
-                        continue
-                    #print('push')
-                    least_cost[adjacent_point] = (cost, current_point)
-                    queue.put((cost, adjacent_point))
-            else :
-                print('error: queue empty')
-                input()
-            #print('realize path')
-            path = list()
-            path_point = end_point
-            while path_point not in start_room.rectangle :
-                #print('path point', path_point)
-                path.append(path_point)
-                path_point = least_cost[path_point][1]
-            path.append(path_point)
-            connected.add((start_room, end_room))
-            paths.append(((start_room, end_room), path))
-            #print('path complete')
-    return paths
-
-def connect(room_index_dictionary, room_point_dictionary) :
-    connected = set()
-    path_required = None
-    for (index, current_room) in room_index_dictionary :
-        pass
-
 cumulative_index = 0
 
 # return area hierarchy, room dictionary
