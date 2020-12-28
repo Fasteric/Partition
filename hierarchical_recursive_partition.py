@@ -86,19 +86,15 @@ class area :
 # partition: assign rectangle to area
 # ??? todo: assign rectangle to room only ???
 # return partition graph
-def partition(subareas, boundary_rectangle, partition_depth, partition_graph) :
+def partition(area_hierarchy, boundary_rectangle, partition_depth, partition_graph) :
     for i in range(4) :
         partition_graph.connect(boundary_rectangle[i], (boundary_rectangle[(i - 1) % 4], partition_depth))
         partition_graph.connect(boundary_rectangle[i], (boundary_rectangle[(i + 1) % 4], partition_depth))
-    if len(subareas) == 0 :
+    if len(area_hierarchy) == 0 :
         pass
-    elif len(subareas) == 1 :
-        subareas[0].rectangle = boundary_rectangle
-        partition(subareas[0].subareas, boundary_rectangle, partition_depth + 1, partition_graph)
-    elif False and len(subareas) == 2 :
-        # special case for 2 ?
-        # maybe not
-        pass
+    elif len(area_hierarchy) == 1 :
+        area_hierarchy[0].rectangle = boundary_rectangle
+        partition(area_hierarchy[0].subareas, boundary_rectangle, partition_depth + 1, partition_graph)
     else :
         # rectangle parameters
         if boundary_rectangle.width() >= boundary_rectangle.height() :
@@ -109,23 +105,17 @@ def partition(subareas, boundary_rectangle, partition_depth, partition_graph) :
             (height_start, height_end, height) = (boundary_rectangle.x1, boundary_rectangle.x2, boundary_rectangle.width())
         # greedy partition test
         total_proportion = 0
-        for subarea in subareas :
+        for subarea in area_hierarchy :
             total_proportion += subarea.proportion
-        cumulative_proportion = subareas[0].proportion
+        cumulative_proportion = area_hierarchy[0].proportion
         partition_proportion = cumulative_proportion
         best_width = (cumulative_proportion / total_proportion) * width
-        best_ratio_error = abs(abs(math.log2(height / best_width)) - subareas[0].prefered_ratio)
-        ###
-        #best_ratio_error += abs(math.log2(height / (width - best_width)))
-        ###
+        best_ratio_error = abs(abs(math.log2(height / best_width)) - area_hierarchy[0].prefered_ratio)
         partition_count = 1
-        for i in range(1, len(subareas)) :
-            cumulative_proportion += subareas[i].proportion
+        for i in range(1, len(area_hierarchy)) :
+            cumulative_proportion += area_hierarchy[i].proportion
             current_width = (cumulative_proportion / total_proportion) * width
-            current_ratio_error = abs(abs(math.log2(height / ((i + 1) * current_width))) - subareas[i].prefered_ratio)
-            ###
-            #if i + 1 < len(subareas) : current_ratio_error += abs(math.log2(height / (width - current_width)))
-            ###
+            current_ratio_error = abs(abs(math.log2(height / ((i + 1) * current_width))) - area_hierarchy[i].prefered_ratio)
             if current_ratio_error <= best_ratio_error :
                 partition_proportion = cumulative_proportion
                 best_width = current_width
@@ -134,14 +124,14 @@ def partition(subareas, boundary_rectangle, partition_depth, partition_graph) :
             else :
                 break
         # partition parameters
-        if partition_count < len(subareas) :
+        if partition_count < len(area_hierarchy) :
             partition_width = width_start + best_width
         else :
             partition_width = width_end
         partition_heights = [height_start]
         cumulative_proportion = 0
         for i in range(partition_count - 1) :
-            cumulative_proportion += subareas[i].proportion
+            cumulative_proportion += area_hierarchy[i].proportion
             partition_heights.append(height_start + (cumulative_proportion / partition_proportion) * height)
         partition_heights.append(height_end)
         # commit partition
@@ -151,15 +141,15 @@ def partition(subareas, boundary_rectangle, partition_depth, partition_graph) :
                 partition_rectangle = rectangle(width_start, partition_heights[i], partition_width, partition_heights[i + 1])
             else :
                 partition_rectangle = rectangle(partition_heights[i], width_start, partition_heights[i + 1], partition_width)
-            subareas[i].rectangle = partition_rectangle
-            partition(subareas[i].subareas, partition_rectangle, partition_depth + 1, partition_graph)
-        if partition_count < len(subareas) :
+            area_hierarchy[i].rectangle = partition_rectangle
+            partition(area_hierarchy[i].subareas, partition_rectangle, partition_depth + 1, partition_graph)
+        if partition_count < len(area_hierarchy) :
             # remaining area partition
             if boundary_rectangle.width() >= boundary_rectangle.height() :
                 partition_rectangle = rectangle(partition_width, height_start, width_end, height_end)
             else :
                 partition_rectangle = rectangle(height_start, partition_width, height_end, width_end)
-            partition(subareas[partition_count:], partition_rectangle, partition_depth, partition_graph)
+            partition(area_hierarchy[partition_count:], partition_rectangle, partition_depth, partition_graph)
 
 # geometrize: define geometry
 # return room point dictionary
@@ -186,10 +176,6 @@ def geometrize(room_index_dictionary, partition_graph, room_point_dictionary) :
         intercept_y[y] = sorted(intercept_y[y])
     # geometrize areas
     for (index, room) in room_index_dictionary.items() :
-        for i in range(4) :
-            if room.rectangle[i] not in room_point_dictionary :
-                room_point_dictionary[room.rectangle[i]] = set()
-            room_point_dictionary[room.rectangle[i]].add(room)
         geometry = list()
         (x1, y1, x2, y2) = (room.rectangle.x1, room.rectangle.y1, room.rectangle.x2, room.rectangle.y2)
         index_x1 = intercept_y[y1].index(x1)
@@ -209,41 +195,78 @@ def geometrize(room_index_dictionary, partition_graph, room_point_dictionary) :
             geometry.append(point(x1, intercept_x[x1][index_y2]))
             index_y2 -= 1
         room.geometry = geometry
-    return room_point_dictionary
+        for vertex in geometry :
+            if vertex not in room_point_dictionary :
+                room_point_dictionary[vertex] = set()
+            room_point_dictionary[vertex].add(room)
+    #return room_point_dictionary
 
-cumulative_index = 0
+cumulative_area_index = None
 
 # return area hierarchy, room dictionary
-def generate_house(breadth, depth, room_index_dictionary) :
-    global cumulative_index
-    subareas = list()
-    if breadth < 2 or depth < 0 :
-        return subareas
-    b = random.randint(2, breadth)
-    for i in range(b) :
-        d = random.randint(0, depth)
-        room_index_dictionary[cumulative_index] = area(cumulative_index)
-        subarea = room_index_dictionary[cumulative_index]
-        cumulative_index += 1
-        subarea.proportion = (1 + random.random()) * 4
-        subarea.prefered_ratio = 0
-        subarea.subareas = sorted(generate_house(b - 1, d - 1, room_index_dictionary), key = (lambda subarea : subarea.proportion))
-        subareas.append(subarea)
-    return subareas
+def generate_area_hierarchy(depth, area_breadth, area_depth, area_index_dictionary) :
+    global cumulative_area_index
+    if depth == 0 :
+        current_area_index = cumulative_area_index
+        cumulative_area_index += 1
+        area_index_dictionary[current_area_index] = area(current_area_index)
+        area_index_dictionary[current_area_index].proportion = 1 + random.random()
+        area_index_dictionary[current_area_index].prefered_ratio = 1
+        area_index_dictionary[current_area_index].subareas = generate_area_hierarchy(depth + 1, area_breadth, area_depth, area_index_dictionary)
+        return [area_index_dictionary[current_area_index]]
+    else :
+        if area_breadth < 2 or area_depth < 1 :
+            return list()
+        subareas = list()
+        current_area_breadth = random.randint(2, area_breadth)
+        for i in range(current_area_breadth) :
+            current_area_index = cumulative_area_index
+            cumulative_area_index += 1
+            area_index_dictionary[current_area_index] = area(current_area_index)
+            area_index_dictionary[current_area_index].proportion = 2 + random.random()
+            area_index_dictionary[current_area_index].prefered_ratio = random.random() - 0.5
+            next_area_breadth = random.randint(area_breadth - 2, area_breadth)
+            next_area_depth = random.randint(area_depth - 3, area_depth - 1)
+            area_index_dictionary[current_area_index].subareas = generate_area_hierarchy(depth - 1, next_area_breadth, next_area_depth, area_index_dictionary)
+            subareas.append(area_index_dictionary[current_area_index])
+        return sorted(subareas, key = (lambda area : area.proportion))
 
-def randomize_area_connection(count, area_index_dictionary) :
-    room_index_dictionary = dict()
-    for (index, area) in area_index_dictionary.items() :
+def identify_room(area_hierarchy, room_index_dictionary) :
+    for area in area_hierarchy :
         if len(area.subareas) == 0 :
-            room_index_dictionary[index] = area
-    room_list = list(room_index_dictionary.values())
-    for i in range(count) :
-        start_room = room_list[random.randint(0, len(room_list) - 1)]
-        end_room = room_list[random.randint(0, len(room_list) - 1)]
-        if start_room != end_room :
-            start_room.connection.add(end_room)
-            end_room.connection.add(start_room)
-    return room_index_dictionary
+            room_index_dictionary[area.index] = area
+        else :
+            identify_room(area.subareas, room_index_dictionary)
+
+def generate_connection(room_index_dictionary, room_point_dictionary, index) :
+    door_segment = list()
+    connected = {room_index_dictionary[index]}
+    available = dict()
+    for i in range(len(room_index_dictionary[index].geometry)) :
+        first_point = room_index_dictionary[index].geometry[i]
+        second_point = room_index_dictionary[index].geometry[(i + 1) % len(room_index_dictionary[index].geometry)]
+        for incident_room in room_point_dictionary[first_point] :
+            if incident_room not in connected and incident_room in room_point_dictionary[second_point] :
+                if incident_room not in available :
+                    available[incident_room] = set()
+                available[incident_room].add((room_index_dictionary[index], first_point, second_point))
+    while len(connected) != len(room_index_dictionary) :
+        (second_room, connections) = random.choice(list(available.items()))
+        (first_room, first_point, second_point) = random.choice(list(connections))
+        door_segment.append((first_room, second_room, first_point, second_point))
+        connected.add(second_room)
+        available.pop(second_room)
+        for i in range(len(second_room.geometry)) :
+            third_point = second_room.geometry[i]
+            fourth_point = second_room.geometry[(i + 1) % len(second_room.geometry)]
+            for third_room in room_point_dictionary[third_point] :
+                if third_room not in connected and third_room in room_point_dictionary[fourth_point] :
+                    if third_room not in available :
+                        available[third_room] = set()
+                    available[third_room].add((second_room, third_point, fourth_point))
+    return door_segment
+
+
 
 def color(depth) :
     return (math.cos(math.tau * depth / 8 + 0 * math.tau / 3) / 2 + 0.5, math.cos(math.tau * depth / 8 + 1 * math.tau / 3) / 2 + 0.5, math.cos(math.tau * depth / 8 + 2 * math.tau / 3) / 2 + 0.5)
@@ -262,18 +285,6 @@ def draw_partition(array, subareas, depth = 0) :
             array[x1 : x2, y1 : y2, :] = 1
             array[x1 + 1 : x2, y1 + 1 : y2, :] = 0
 
-def draw_paths(array, paths) :
-    for i in range(len(paths)) :
-        path = paths[i][1]
-        for j in range(len(path) - 1) :
-            (x1, y1) = (int(path[j].x), int(path[j].y))
-            (x2, y2) = (int(path[j + 1].x), int(path[j + 1].y))
-            if x1 > x2 :
-                (x1, x2) = (x2, x1)
-            if y1 > y2 :
-                (y1, y2) = (y2, y1)
-            array[x1 : x2 + 1, y1 : y2 + 1, :] = 1 - np.array(color(i))
-
 def draw_vertex(array, partition_graph) :
     min_vertex_value = dict()
     for (vertex, edges) in partition_graph.graph.items() :
@@ -282,43 +293,56 @@ def draw_vertex(array, partition_graph) :
                 min_vertex_value[v] = w
                 array[int(v.x), int(v.y), :] = color(w)
 
+def draw_connection(array, door_segment) :
+    for (_, _, first_point, second_point) in door_segment :
+        (x1, y1, x2, y2) = (int(first_point.x), int(first_point.y), int(second_point.x), int(second_point.y))
+        if x1 > x2 :
+            (x1, x2) = (x2, x1)
+        if y1 > y2 :
+            (y1, y2) = (y2, y1)
+        if first_point.x == second_point.x :
+            array[x1, y1 : y2, :] = [1, 0, 0]
+        else :
+            array[x1 : x2, y2, :] = [1, 0, 0]
+
 sample = np.zeros((8, 1, 3))
 for i in range(8) :
     sample[i, 0] = color(i)
 
 while True :
 
-    cumulative_index = 0
+    cumulative_area_index = 0
     area_index_dictionary = dict()
+    area_hierarchy = generate_area_hierarchy(0, 8, 4, area_index_dictionary)
 
-    area_index_dictionary[cumulative_index] = area(cumulative_index)
-    house = area_index_dictionary[cumulative_index]
-    cumulative_index += 1
-    house.proportion = 1
-    house.prefered_ratio = 0
-    house.subareas = generate_house(11, 7, area_index_dictionary)
+    room_index_dictionary = dict()
+    identify_room(area_hierarchy, room_index_dictionary)
+    ###
+    #room_index_dictionary[0] = area_index_dictionary[0]
+    ###
 
-    room_index_dictionary = randomize_area_connection(15, area_index_dictionary)
-
-    boundary_rectangle = rectangle(0, 0, (1 + random.random()) * 100, (1 + random.random()) * 100)
+    boundary_rectangle = rectangle(0, 0, (1 + random.random()) * 250, (1 + random.random()) * 250)
     partition_graph = graph()
     room_point_dictionary = dict()
 
-    partition([house], boundary_rectangle, 0, partition_graph)
+    partition(area_hierarchy, boundary_rectangle, 0, partition_graph)
     geometrize(room_index_dictionary, partition_graph, room_point_dictionary)
-    #print(room_index_dictionary[0].geometry)
 
-    paths = pathfinding(room_index_dictionary, partition_graph)
+    ###
+    #room_index_dictionary[0].geometry.reverse()
+    ###
+    door_segment = generate_connection(room_index_dictionary, room_point_dictionary, list(room_point_dictionary[point(0, 0)])[0].index)
 
     array = np.ones((int(boundary_rectangle.width()) + 1, int(boundary_rectangle.height()) + 1, 3))
-    draw_partition(array, [house])
-    draw_paths(array, paths)
+    draw_partition(array, area_hierarchy)
     draw_vertex(array, partition_graph)
+    draw_connection(array, door_segment)
 
-    plt.subplot(122)
+    #plt.subplot(121)
+    #plt.imshow(sample)
+    #plt.subplot(122)
     plt.imshow(array)
-    plt.subplot(121)
-    plt.imshow(sample)
     #print_partition_hierarchy([house])
     #print(partition_graph)
     plt.show()
+    print()
