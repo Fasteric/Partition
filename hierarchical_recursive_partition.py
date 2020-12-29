@@ -204,30 +204,31 @@ def geometrize(room_index_dictionary, partition_graph, room_point_dictionary) :
 cumulative_area_index = None
 
 # return area hierarchy, room dictionary
-def generate_area_hierarchy(depth, area_breadth, area_depth, area_index_dictionary) :
+#min_area_breadth, max_area_breadth, min_area_depth, max_area_depth
+def generate_area_hierarchy(iteration_depth, area_breadth, area_depth, area_index_dictionary) :
     global cumulative_area_index
-    if depth == 0 :
+    if iteration_depth == 0 :
         current_area_index = cumulative_area_index
         cumulative_area_index += 1
         area_index_dictionary[current_area_index] = area(current_area_index)
         area_index_dictionary[current_area_index].proportion = 1 + random.random()
         area_index_dictionary[current_area_index].prefered_ratio = 1
-        area_index_dictionary[current_area_index].subareas = generate_area_hierarchy(depth + 1, area_breadth, area_depth, area_index_dictionary)
+        area_index_dictionary[current_area_index].subareas = generate_area_hierarchy(iteration_depth + 1, area_breadth, area_depth, area_index_dictionary)
         return [area_index_dictionary[current_area_index]]
     else :
         if area_breadth < 2 or area_depth < 1 :
             return list()
         subareas = list()
-        current_area_breadth = random.randint(2, area_breadth)
+        current_area_breadth = area_breadth #random.randint(2, area_breadth)
         for i in range(current_area_breadth) :
             current_area_index = cumulative_area_index
             cumulative_area_index += 1
             area_index_dictionary[current_area_index] = area(current_area_index)
             area_index_dictionary[current_area_index].proportion = 2 + random.random()
             area_index_dictionary[current_area_index].prefered_ratio = random.random() - 0.5
-            next_area_breadth = random.randint(area_breadth - 2, area_breadth)
-            next_area_depth = random.randint(area_depth - 3, area_depth - 1)
-            area_index_dictionary[current_area_index].subareas = generate_area_hierarchy(depth - 1, next_area_breadth, next_area_depth, area_index_dictionary)
+            next_area_breadth = max(2, random.randint(area_breadth - 2, area_breadth))
+            next_area_depth = area_depth - 1 #random.randint(area_depth - 3, area_depth - 1)
+            area_index_dictionary[current_area_index].subareas = generate_area_hierarchy(iteration_depth - 1, next_area_breadth, next_area_depth, area_index_dictionary)
             subareas.append(area_index_dictionary[current_area_index])
         return sorted(subareas, key = (lambda area : area.proportion))
 
@@ -313,7 +314,7 @@ while True :
 
     cumulative_area_index = 0
     area_index_dictionary = dict()
-    area_hierarchy = generate_area_hierarchy(0, 8, 4, area_index_dictionary)
+    area_hierarchy = generate_area_hierarchy(0, 3, 2, area_index_dictionary)
 
     room_index_dictionary = dict()
     identify_room(area_hierarchy, room_index_dictionary)
