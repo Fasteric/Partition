@@ -416,9 +416,11 @@ def draw_connection(array, connection_graph, connection_color) :
             if y1 > y2 :
                 (y1, y2) = (y2, y1)
             if first_point.x == second_point.x :
-                array[x1, random.randint(y1 + 1, y2 - 1), :] = connection_color
+                #array[x1, random.randint(y1 + 1, y2 - 1), :] = connection_color
+                array[x1, np.clip(int(np.random.normal((y1 + y2) / 2, (y2 - y1) / 8)), y1 + 1, y2 - 1), :] = connection_color
             else :
-                array[random.randint(x1 + 1, x2 - 1), y2, :] = connection_color
+                #array[random.randint(x1 + 1, x2 - 1), y2, :] = connection_color
+                array[np.clip(int(np.random.normal((x1 + x2) / 2, (x2 - x1) / 8)), x1 + 1, x2 - 1), y2, :] = connection_color
 
 while True :
 
@@ -426,12 +428,14 @@ while True :
 
     boundary_rectangle = rectangle(0, 0, (1 + random.random()) * 25, (1 + random.random()) * 25)
     # phum's list generation
-    (room_count, first_breadth) = (7, 3)
+    (room_count, first_breadth) = (5, 2)
     phums_list = [0.5 + random.random() for i in range(first_breadth)]
     phums_list = [int((sum(phums_list[:i + 1]) / sum(phums_list)) * (room_count - first_breadth)) for i in range(first_breadth)]
     phums_list[1:] = [phums_list[i] - phums_list[i - 1] for i in range(1, first_breadth)]
     phums_list = [1 + phums_list[i] for i in range(first_breadth)]
+    random.shuffle(phums_list)
     phums_list = [[random.randint(2, 10) for j in range(phums_list[i])] for i in range(first_breadth)]
+    print(phums_list)
 
     # generate area hierarchy
     area_index_dictionary = dict()
