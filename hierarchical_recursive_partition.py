@@ -73,6 +73,7 @@ class area :
         self.children = list()
         self.rectangle = None
         # room only properties
+        self.type = None
         self.geometry = list()
         self.connection = set()
         #self.door_segment = list()
@@ -232,7 +233,7 @@ def generate_area_hierarchy(recursive_depth, area_index_dictionary, area_breadth
             children.append(area_index_dictionary[current_area_index])
         return sorted(children, key = (lambda area : area.proportion))
 
-def generate_phums_area_hierarchy(phums_list, area_index_dictionary, room_index_dictionary) :
+def phums_area_hierarchy(phums_list, area_index_dictionary, room_index_dictionary) :
     current_index = 0
     root_area = area(current_index)
     area_index_dictionary[current_index] = root_area
@@ -243,7 +244,7 @@ def generate_phums_area_hierarchy(phums_list, area_index_dictionary, room_index_
         area_index_dictionary[current_index] = first_depth_area
         current_index += 1
         first_depth_area.proportion = 0.5 + random.random()
-        for j in range(phums_list[i]) :
+        for j in range(len(phums_list[i])) :
             second_depth_area = area(current_index)
             area_index_dictionary[current_index] = second_depth_area
             room_index_dictionary[current_index] = second_depth_area
@@ -336,7 +337,7 @@ def phums_tree_connection(connection_root, room_point_dictionary, connection_gra
                             second_reference_room = next_reference_room
                             break
                 if first_reference_room != second_reference_room :
-                    print('from tree', first_room, second_room)
+                    print('connect', first_room, second_room, 'due to tree structure')
                     phums_connected.add((first_room, second_room))
                     connection_graph.connect(first_room, (second_room, first_point, second_point))
 
@@ -346,6 +347,8 @@ def phums_random_connection(room_point_dictionary, connection_graph, connection_
         for i in range(len(first_room.geometry)) :
             first_point = first_room.geometry[i]
             second_point = first_room.geometry[(i + 1) % len(first_room.geometry)]
+            if abs(first_point.x - second_point.x) + abs(first_point.y - second_point.y) <= 2 :
+                continue
             for second_room in room_point_dictionary[first_point] :
                 if first_room == second_room :
                     continue
@@ -362,18 +365,18 @@ def phums_random_connection(room_point_dictionary, connection_graph, connection_
                         break
                 if abort_flag :
                     continue
-                print('from luck', first_room, second_room)
+                print('connect', first_room, second_room, 'from sheer luck')
                 phums_connected.add((first_room, second_room))
                 connection_graph.connect(first_room, (second_room, first_point, second_point))
                 
 
 
-def color_sampler(depth) :
-    return (math.cos(math.tau * depth / 8 + 0 * math.tau / 3) / 2 + 0.5, math.cos(math.tau * depth / 8 + 1 * math.tau / 3) / 2 + 0.5, math.cos(math.tau * depth / 8 + 2 * math.tau / 3) / 2 + 0.5)
+def color_sampler(index) :
+    return np.array([math.cos(math.tau * -index / 12 + i * math.tau / 3) for i in range(3)]) / 2 + 0.5
 
-sample = np.zeros((8, 1, 3))
-for i in range(8) :
-    sample[i, 0] = color_sampler(i)
+sample = np.zeros((12, 1, 3))
+for i in range(12) :
+    sample[i, 0, :] = color_sampler(i)
 
 def print_partition_hierarchy(children, depth = 0) :
     for subarea in children :
@@ -387,7 +390,10 @@ def draw_partition(array, children, depth = 0) :
         else :
             (x1, y1, x2, y2) = (int(subarea.rectangle.x1), int(subarea.rectangle.y1), int(subarea.rectangle.x2), int(subarea.rectangle.y2))
             array[x1 : x2, y1 : y2, :] = 1
-            array[x1 + 1 : x2, y1 + 1 : y2, :] = 0
+            if subarea.type is None :
+                array[x1 + 1 : x2, y1 + 1 : y2, :] = 0
+            else :
+                array[x1 + 1 : x2, y1 + 1 : y2, :] = color_sampler(subarea.type) / 4
 
 def draw_vertex(array, partition_graph) :
     min_vertex_value = dict()
@@ -410,52 +416,46 @@ def draw_connection(array, connection_graph, connection_color) :
             if y1 > y2 :
                 (y1, y2) = (y2, y1)
             if first_point.x == second_point.x :
-                array[x1, y1 + 1 : y2, :] = connection_color
+                array[x1, random.randint(y1 + 1, y2 - 1), :] = connection_color
             else :
-                array[x1 + 1 : x2, y2, :] = connection_color
+                array[random.randint(x1 + 1, x2 - 1), y2, :] = connection_color
 
 while True :
 
     print('generate')
 
-    (room_count, first_breadth) = (13, 3)
+    boundary_rectangle = rectangle(0, 0, (1 + random.random()) * 25, (1 + random.random()) * 25)
+    # phum's list generation
+    (room_count, first_breadth) = (7, 3)
     phums_list = [0.5 + random.random() for i in range(first_breadth)]
     phums_list = [int((sum(phums_list[:i + 1]) / sum(phums_list)) * (room_count - first_breadth)) for i in range(first_breadth)]
     phums_list[1:] = [phums_list[i] - phums_list[i - 1] for i in range(1, first_breadth)]
     phums_list = [1 + phums_list[i] for i in range(first_breadth)]
-    print(phums_list)
+    phums_list = [[random.randint(2, 10) for j in range(phums_list[i])] for i in range(first_breadth)]
 
-    cumulative_area_index = 0
+    # generate area hierarchy
     area_index_dictionary = dict()
-    area_hierarchy = generate_area_hierarchy(0, area_index_dictionary, (2, 4), (1, 2))
-
     room_index_dictionary = dict()
-    identify_room(area_hierarchy, room_index_dictionary)
-    ###
-    #room_index_dictionary[0] = area_index_dictionary[0]
-    ###
+    phums_area_hierarchy(phums_list, area_index_dictionary, room_index_dictionary)
 
-    boundary_rectangle = rectangle(0, 0, (1 + random.random()) * 50, (1 + random.random()) * 50)
-    partition_graph = graph()
+    # partition and geometrize
     room_point_dictionary = dict()
-
-    partition(area_hierarchy, boundary_rectangle, 0, partition_graph)
+    partition_graph = graph()
+    partition([area_index_dictionary[0]], boundary_rectangle, 0, partition_graph)
     geometrize(room_index_dictionary, partition_graph, room_point_dictionary)
 
-    ###
-    #room_index_dictionary[0].geometry.reverse()
-    ###
-    #door_segment = generate_connection(room_index_dictionary, room_point_dictionary, list(room_point_dictionary[point(0, 0)])[0].index)
+    # generate tree-structured connection
     #connection_root = list(room_point_dictionary[point(0, 0)])[0]
     connection_root = random.choice(list(room_index_dictionary.values()))
+    connection_root.type = 0
     connection_graph = graph()
     connection_graph.connect(connection_root, (None, None, None))
     generate_connection(room_index_dictionary, room_point_dictionary, connection_graph)
 
     array = np.ones((int(boundary_rectangle.width()) + 1, int(boundary_rectangle.height()) + 1, 3))
-    draw_partition(array, area_hierarchy)
+    draw_partition(array, [area_index_dictionary[0]])
     #draw_vertex(array, partition_graph)
-    draw_connection(array, connection_graph, [1, 0, 0])
+    draw_connection(array, connection_graph, color_sampler(0))
 
     phums_tree_connection_array = np.copy(array)
     phums_random_connection_array = np.copy(array)
@@ -471,9 +471,11 @@ while True :
     for (key, value) in connection_graph.graph.items() :
         phums_tree_connection_graph.graph[key] -= value
         phums_random_connection_graph.graph[key] -= value
-    draw_connection(phums_tree_connection_array, phums_tree_connection_graph, [0, 1, 0])
-    draw_connection(phums_random_connection_array, phums_random_connection_graph, [0, 0, 1])
+    draw_connection(phums_tree_connection_array, phums_tree_connection_graph, color_sampler(4))
+    draw_connection(phums_random_connection_array, phums_random_connection_graph, color_sampler(8))
 
+    #plt.subplot(141)
+    #plt.imshow(sample)
     plt.subplot(131)
     plt.imshow(array)
     plt.subplot(132)
