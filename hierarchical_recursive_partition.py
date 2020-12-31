@@ -75,7 +75,7 @@ class area :
         # room only properties
         self.type = None
         self.geometry = list()
-        self.connection = set()
+        self.connection = dict()
         #self.door_segment = list()
     def __repr__(self) :
         return 'area({})'.format(self.index)
@@ -206,6 +206,7 @@ def geometrize(room_index_dictionary, partition_graph, room_point_dictionary) :
 
 cumulative_area_index = None
 
+# UNUSED
 # return area hierarchy, room dictionary
 def generate_area_hierarchy(recursive_depth, area_index_dictionary, area_breadth, area_depth) :
     global cumulative_area_index
@@ -243,17 +244,20 @@ def phums_area_hierarchy(phums_list, area_index_dictionary, room_index_dictionar
         first_depth_area = area(current_index)
         area_index_dictionary[current_index] = first_depth_area
         current_index += 1
-        first_depth_area.proportion = 0.5 + random.random()
+        first_depth_area.proportion = 0.75 + random.random() / 2
         for j in range(len(phums_list[i])) :
             second_depth_area = area(current_index)
             area_index_dictionary[current_index] = second_depth_area
             room_index_dictionary[current_index] = second_depth_area
             current_index += 1
-            second_depth_area.proportion = 0.5 + random.random()
+            second_depth_area.proportion = 0.75 + random.random() / 2
             second_depth_area.type = phums_list[i][j]
             first_depth_area.children.append(second_depth_area)
+        first_depth_area.children.sort(key = lambda area : area.proportion)
         root_area.children.append(first_depth_area)
+    root_area.children.sort(key = lambda area : area.proportion)
 
+# UNUSED
 def identify_room(area_hierarchy, room_index_dictionary) :
     for area in area_hierarchy :
         if len(area.children) == 0 :
@@ -262,44 +266,57 @@ def identify_room(area_hierarchy, room_index_dictionary) :
             identify_room(area.children, room_index_dictionary)
 
 # modify: connection_graph
-def generate_connection(room_index_dictionary, room_point_dictionary, connection_graph) :
-    available = dict()
-    for room in connection_graph :
-        for i in range(len(room.geometry)) :
-            first_point = room.geometry[i]
-            second_point = room.geometry[(i + 1) % len(room.geometry)]
+def generate_tree_connection(connection_root_room, room_index_dictionary, room_point_dictionary) :
+    connected = {connection_root_room}
+    available_connection = dict()
+    for i in range(len(connection_root_room.geometry)) :
+        first_point = connection_root_room.geometry[i]
+        second_point = connection_root_room.geometry[(i + 1) % len(connection_root_room.geometry)]
+        if abs(first_point.x - second_point.x) + abs(first_point.y - second_point.y) <= 2 :
+            continue
+        for adjacent_room in room_point_dictionary[first_point] :
+            if adjacent_room in connected :
+                continue
+            if adjacent_room in connection_root_room.connection :
+                continue
+            if adjacent_room not in room_point_dictionary[second_point] :
+                continue
+            if adjacent_room not in available_connection :
+                available_connection[adjacent_room] = list()
+            available_connection[adjacent_room].append((connection_root_room, (first_point, second_point)))
+    while len(connected) != len(room_index_dictionary) :
+        if len(available_connection) == 0 :
+            print('unreachable room exist')
+            break
+        connect_to_room = random.choice(list(available_connection.keys()))
+        (connect_from_room, (first_point, second_point)) = random.choice(list(available_connection.pop(connect_to_room)))
+        if connect_to_room not in connect_from_room.connection :
+            connect_from_room.connection[connect_to_room] = list()
+        connect_from_room.connection[connect_to_room].append((first_point, second_point))
+        if connect_from_room not in connect_to_room.connection :
+            connect_to_room.connection[connect_from_room] = list()
+        connect_to_room.connection[connect_from_room].append((second_point, first_point))
+        connected.add(connect_from_room)
+        connected.add(connect_to_room)
+        for i in range(len(connect_to_room.geometry)) :
+            first_point = connect_to_room.geometry[i]
+            second_point = connect_to_room.geometry[(i + 1) % len(connect_to_room.geometry)]
             if abs(first_point.x - second_point.x) + abs(first_point.y - second_point.y) <= 2 :
                 continue
-            for incident_room in room_point_dictionary[first_point] :
-                if incident_room not in connection_graph and incident_room in room_point_dictionary[second_point] :
-                    if incident_room not in available :
-                        available[incident_room] = set()
-                    available[incident_room].add((room, first_point, second_point))
-    while len(connection_graph) != len(room_index_dictionary) :
-        (second_room, connections) = random.choice(list(available.items()))
-        (first_room, first_point, second_point) = random.choice(list(connections))
-        #door_segment.append((first_room, second_room, first_point, second_point))
-        #connected.add(second_room)
-        connection_graph.connect(first_room, (second_room, first_point, second_point))
-        connection_graph.connect(second_room, (first_room, first_point, second_point))
-        available.pop(second_room)
-        for i in range(len(second_room.geometry)) :
-            third_point = second_room.geometry[i]
-            fourth_point = second_room.geometry[(i + 1) % len(second_room.geometry)]
-            if abs(third_point.x - fourth_point.x) + abs(third_point.y - fourth_point.y) <= 2 :
-                continue
-            for third_room in room_point_dictionary[third_point] :
-                if third_room in connection_graph :
+            for adjacent_room in room_point_dictionary[first_point] :
+                if adjacent_room in connected :
                     continue
-                if third_room not in room_point_dictionary[fourth_point] :
+                if adjacent_room in connect_to_room.connection :
                     continue
-                if third_room not in available :
-                    available[third_room] = set()
-                available[third_room].add((second_room, third_point, fourth_point))
+                if adjacent_room not in room_point_dictionary[second_point] :
+                    continue
+                if adjacent_room not in available_connection :
+                    available_connection[adjacent_room] = list()
+                available_connection[adjacent_room].append((connect_to_room, (first_point, second_point)))
 
-def phums_tree_connection(connection_root, room_point_dictionary, connection_graph, reference_depth, connecting_depth) :
-    depth_room_dictionary = {connection_root: 0}
-    stack = [connection_root]
+def phums_additional_tree_connection(connection_root_room, room_point_dictionary, reference_depth, connecting_depth) :
+    depth_room_dictionary = {connection_root_room: 0}
+    stack = [connection_root_room]
     while len(stack) > 0 :
         first_room = stack.pop()
         for (second_room, _, _) in connection_graph[first_room] :
@@ -326,8 +343,8 @@ def phums_tree_connection(connection_root, room_point_dictionary, connection_gra
                     continue
                 if second_room not in room_point_dictionary[second_point] :
                     continue
-                if depth_room_dictionary[second_room] < connecting_depth :
-                    continue
+                #if depth_room_dictionary[second_room] < connecting_depth :
+                    #continue
                 if (second_room, first_room) in phums_connected :
                     continue
                 second_reference_room = second_room
@@ -341,7 +358,7 @@ def phums_tree_connection(connection_root, room_point_dictionary, connection_gra
                     phums_connected.add((first_room, second_room))
                     connection_graph.connect(first_room, (second_room, first_point, second_point))
 
-def phums_random_connection(room_point_dictionary, connection_graph, connection_chance) :
+def phums_additional_random_connection(room_point_dictionary, connection_graph, connection_chance) :
     phums_connected = set()
     for first_room in connection_graph :
         for i in range(len(first_room.geometry)) :
@@ -383,6 +400,7 @@ def print_partition_hierarchy(children, depth = 0) :
         print('{}{}'.format('    ' * depth, subarea.rectangle))
         print_partition_hierarchy(subarea.children, depth + 1)
 
+# should draw_partition prefer list of room too ?
 def draw_partition(array, children, depth = 0) :
     for subarea in children :
         if len(subarea.children) > 0 :
@@ -403,38 +421,39 @@ def draw_vertex(array, partition_graph) :
                 min_vertex_value[v] = w
                 array[int(v.x), int(v.y), :] = color_sampler(w)
 
-def draw_connection(array, connection_graph, connection_color) :
-    drew = {(None, None)}
-    for connections in connection_graph.graph.values() :
-        for (target_room, first_point, second_point) in connections :
-            if (first_point, second_point) in drew :
+# prefer list of room over room_index_dictionary
+def draw_connection(array, room_index_dictionary, connection_color) :
+    drew = set()
+    for connect_from_room in room_index_dictionary.values() :
+        for connect_to_room in connect_from_room.connection :
+            if connect_to_room in drew :
                 continue
-            drew.add((first_point, second_point))
-            (x1, y1, x2, y2) = (int(first_point.x), int(first_point.y), int(second_point.x), int(second_point.y))
-            if x1 > x2 :
-                (x1, x2) = (x2, x1)
-            if y1 > y2 :
-                (y1, y2) = (y2, y1)
-            if first_point.x == second_point.x :
-                #array[x1, random.randint(y1 + 1, y2 - 1), :] = connection_color
-                array[x1, np.clip(int(np.random.normal((y1 + y2) / 2, (y2 - y1) / 8)), y1 + 1, y2 - 1), :] = connection_color
-            else :
-                #array[random.randint(x1 + 1, x2 - 1), y2, :] = connection_color
-                array[np.clip(int(np.random.normal((x1 + x2) / 2, (x2 - x1) / 8)), x1 + 1, x2 - 1), y2, :] = connection_color
+            for i in range(len(connect_from_room.connection[connect_to_room])) :
+                (first_point, second_point) = connect_from_room.connection[connect_to_room][i]
+                if first_point.x > second_point.x or first_point.y > second_point.y :
+                    (first_point, second_point) = (second_point, first_point)
+                (x1, y1, x2, y2) = (int(first_point.x), int(first_point.y), int(second_point.x), int(second_point.y))
+                if x1 == x2 :
+                    array[x1, random.randint(y1 + 1, y2 - 1), :] = connection_color
+                else :
+                    array[random.randint(x1 + 1, x2 - 1), y2, :] = connection_color
+        drew.add(connect_from_room)
+
 
 while True :
 
     print('generate')
 
-    boundary_rectangle = rectangle(0, 0, (1 + random.random()) * 25, (1 + random.random()) * 25)
+    boundary_rectangle = rectangle(0, 0, (1 + random.random()) * 50, (1 + random.random()) * 50)
     # phum's list generation
-    (room_count, first_breadth) = (5, 2)
+    (room_count, first_breadth) = (16, 3)
     phums_list = [0.5 + random.random() for i in range(first_breadth)]
     phums_list = [int((sum(phums_list[:i + 1]) / sum(phums_list)) * (room_count - first_breadth)) for i in range(first_breadth)]
     phums_list[1:] = [phums_list[i] - phums_list[i - 1] for i in range(1, first_breadth)]
     phums_list = [1 + phums_list[i] for i in range(first_breadth)]
     random.shuffle(phums_list)
     phums_list = [[random.randint(2, 10) for j in range(phums_list[i])] for i in range(first_breadth)]
+    #phums_list = [[1, 2, 3], [4, 5], [6, 7]]
     print(phums_list)
 
     # generate area hierarchy
@@ -443,23 +462,28 @@ while True :
     phums_area_hierarchy(phums_list, area_index_dictionary, room_index_dictionary)
 
     # partition and geometrize
+    partition_root_area = area_index_dictionary[0]
     room_point_dictionary = dict()
     partition_graph = graph()
-    partition([area_index_dictionary[0]], boundary_rectangle, 0, partition_graph)
+    partition([partition_root_area], boundary_rectangle, 0, partition_graph)
     geometrize(room_index_dictionary, partition_graph, room_point_dictionary)
 
     # generate tree-structured connection
     #connection_root = list(room_point_dictionary[point(0, 0)])[0]
-    connection_root = random.choice(list(room_index_dictionary.values()))
-    connection_root.type = 0
-    connection_graph = graph()
-    connection_graph.connect(connection_root, (None, None, None))
-    generate_connection(room_index_dictionary, room_point_dictionary, connection_graph)
+    connection_root_room = random.choice(list(room_index_dictionary.values()))
+    connection_root_room.type = 0
+    generate_tree_connection(connection_root_room, room_index_dictionary, room_point_dictionary)
 
     array = np.ones((int(boundary_rectangle.width()) + 1, int(boundary_rectangle.height()) + 1, 3))
-    draw_partition(array, [area_index_dictionary[0]])
+    draw_partition(array, [partition_root_area])
     #draw_vertex(array, partition_graph)
-    draw_connection(array, connection_graph, color_sampler(0))
+    draw_connection(array, room_index_dictionary, color_sampler(0))
+    
+    ###
+    plt.imshow(array)
+    plt.show()
+    continue
+    ###
 
     phums_tree_connection_array = np.copy(array)
     phums_random_connection_array = np.copy(array)
@@ -470,7 +494,7 @@ while True :
         phums_random_connection_graph.graph[key] = set(value)
 
     phums_tree_connection(connection_root, room_point_dictionary, phums_tree_connection_graph, 2, 3)
-    phums_random_connection(room_point_dictionary, phums_random_connection_graph, 0.2)
+    phums_random_connection(room_point_dictionary, phums_random_connection_graph, 0.1)
 
     for (key, value) in connection_graph.graph.items() :
         phums_tree_connection_graph.graph[key] -= value
