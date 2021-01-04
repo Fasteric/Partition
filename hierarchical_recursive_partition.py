@@ -43,8 +43,13 @@ class rectangle :
         return self.x2 - self.x1
     def height(self) :
         return self.y2 - self.y1
-    def point(self, index) :
-        return self[index]
+    def collide(self, other) :
+        for i in range(4) :
+            if other.x1 <= self[i].x <= other.x2 and other.y1 <= self[i].y <= other.y2 :
+                return True
+            if self.x1 <= other[i].x <= self.x2 and self.y1 <= other[i].y <= self.y2 :
+                return True
+        return False
 
 class graph :
     def __init__(self) :
@@ -67,16 +72,16 @@ class graph :
 class area :
     def __init__(self, index) :
         # index
-        self.index = index
+        self.rectangle = None
         # area properties
+        self.index = index
         self.proportion = 1
         self.children = list()
-        self.rectangle = None
         # room only properties
-        self.type = None
-        self.geometry = list()
-        self.connection = dict()
-        #self.door_segment = list()
+        self.type = 0
+        self.geometry = list() # point_1, point_2, ..., point_n
+        self.connection = dict() # destination_room -> (point_i, point_i+1, metadata)
+        self.furniture = list()
     def __repr__(self) :
         return 'area({})'.format(self.index)
     def __lt__(self, other) :
@@ -157,7 +162,7 @@ def partition(area_hierarchy, boundary_rectangle, partition_depth, partition_gra
 
 # geometrize: define geometry
 # return room point dictionary
-def geometrize(room_index_dictionary, partition_graph, room_point_dictionary) :
+def geometrize(room_list, partition_graph, room_point_dictionary) :
     # interception
     intercept_x = dict()
     intercept_y = dict()
@@ -179,7 +184,7 @@ def geometrize(room_index_dictionary, partition_graph, room_point_dictionary) :
     for y in intercept_y :
         intercept_y[y] = sorted(intercept_y[y])
     # geometrize areas
-    for (index, room) in room_index_dictionary.items() :
+    for room in room_list :
         geometry = list()
         (x1, y1, x2, y2) = (room.rectangle.x1, room.rectangle.y1, room.rectangle.x2, room.rectangle.y2)
         index_x1 = intercept_y[y1].index(x1)
@@ -234,7 +239,7 @@ def generate_area_hierarchy(recursive_depth, area_index_dictionary, area_breadth
             children.append(area_index_dictionary[current_area_index])
         return sorted(children, key = (lambda area : area.proportion))
 
-def phums_area_hierarchy(phums_list, area_index_dictionary, room_index_dictionary) :
+def generate_phums_area_hierarchy(phums_list, area_index_dictionary, room_index_dictionary) :
     current_index = 0
     root_area = area(current_index)
     area_index_dictionary[current_index] = root_area
@@ -265,7 +270,7 @@ def identify_room(area_hierarchy, room_index_dictionary) :
         else :
             identify_room(area.children, room_index_dictionary)
 
-def generate_tree_connection(connection_root_room, room_index_dictionary, room_point_dictionary) :
+def generate_tree_connection(connection_root_room, room_list, room_point_dictionary) :
     connected = {connection_root_room}
     available_connection = dict()
     for i in range(len(connection_root_room.geometry)) :
@@ -283,9 +288,9 @@ def generate_tree_connection(connection_root_room, room_index_dictionary, room_p
             if adjacent_room not in available_connection :
                 available_connection[adjacent_room] = list()
             available_connection[adjacent_room].append((connection_root_room, (first_point, second_point)))
-    while len(connected) != len(room_index_dictionary) :
+    while len(connected) != len(room_list) :
         if len(available_connection) == 0 :
-            print('unreachable room exist')
+            input('unreachable room exist')
             break
         destination_room = random.choice(list(available_connection.keys()))
         (source_room, (first_point, second_point)) = random.choice(list(available_connection.pop(destination_room)))
@@ -313,7 +318,7 @@ def generate_tree_connection(connection_root_room, room_index_dictionary, room_p
                     available_connection[adjacent_room] = list()
                 available_connection[adjacent_room].append((destination_room, (first_point, second_point)))
 
-def phums_additional_tree_connection(connection_root_room, room_point_dictionary, reference_depth, connecting_depth) :
+def generate_phums_additional_tree_connection(connection_root_room, room_point_dictionary, reference_depth, connecting_depth) :
     # depth room dictionary
     depth_room_dictionary = {connection_root_room: 0}
     stack = [connection_root_room]
@@ -362,7 +367,7 @@ def phums_additional_tree_connection(connection_root_room, room_point_dictionary
                     #print('connect', first_room, second_room, 'due to tree structure')
 
 # UNUSED
-def phums_additional_random_connection(room_point_dictionary, connection_graph, connection_chance) :
+def generate_phums_additional_random_connection(room_point_dictionary, connection_graph, connection_chance) :
     phums_connected = set()
     for first_room in connection_graph :
         for i in range(len(first_room.geometry)) :
@@ -390,10 +395,50 @@ def phums_additional_random_connection(room_point_dictionary, connection_graph, 
                 phums_connected.add((first_room, second_room))
                 connection_graph.connect(first_room, (second_room, first_point, second_point))
                 
+def furnish(room_list, viable_furniture) :
+    for room in room_list :
+        (room_x1, room_y1, room_x2, room_y2) = (room.rectangle.x1, room.rectangle.y1, room.rectangle.x2, room.rectangle.y2)
+        (room_width, room_height) = (room.rectangle.width(), room.rectangle.height())
+        for i in range(7) : # number of furniture
+            furniture = random.choice(viable_furniture[room.type])
+            (furniture_width, furniture_height, furniture_wall) = (furniture[0], furniture[1], furniture[2])
+            for j in range(4) : # number of attempt
+                if furniture_wall :
+                    wall_side = random.randint(0, 3)
+                    if wall_side == 0 :
+                        furniture_x = (room_x1 + 1) + (room_width - furniture_width - 1) * random.random()
+                        furniture_y = room_y1 + 1
+                    elif wall_side == 1 :
+                        furniture_x = room_x2 - furniture_width
+                        furniture_y = (room_y1 + 1) + (room_height - furniture_height - 1) * random.random()
+                    elif wall_side == 2 :
+                        furniture_x = (room_x1 + 1) + (room_width - furniture_width - 1) * random.random()
+                        furniture_y = room_y2 - furniture_height
+                    else :
+                        furniture_x = room_x1 + 1
+                        furniture_y = (room_y1 + 1) + (room_height - furniture_height - 1) * random.random()
+                else :
+                    furniture_x = (room_x1 + 1) + (room_width - furniture_width - 1) * random.random()
+                    furniture_y = (room_y1 + 1) + (room_height - furniture_height - 1) * random.random()
+                furniture_rectangle = rectangle(furniture_x, furniture_y, furniture_x + furniture_width, furniture_y + furniture_height)
+                collided = False
+                for existed_furniture in room.furniture :
+                    if existed_furniture.rectangle.collide(furniture_rectangle) :
+                        collided = True
+                        break
+                if collided :
+                    continue
+                # area ?
+                furniture_area = area(0)
+                furniture_area.rectangle = furniture_rectangle
+                room.furniture.append(furniture_area)
+                break
+            else :
+                print('furniture {} on room {} cancelled'.format(i, room))
 
 
 def color_sampler(index) :
-    return np.array([math.cos(math.tau * -index / 12 + i * math.tau / 3) for i in range(3)]) / 2 + 0.5
+    return np.array([math.cos(math.tau * index / 12 - i * math.tau / 3) for i in range(3)]) / 2 + 0.5
 
 sample = np.zeros((12, 1, 3))
 for i in range(12) :
@@ -405,7 +450,8 @@ def print_partition_hierarchy(children, depth = 0) :
         print_partition_hierarchy(subarea.children, depth + 1)
 
 # should draw_partition prefer list of room too ?
-def draw_partition(array, children, depth = 0) :
+# yes UNUSED
+def old_draw_partition(array, children, depth = 0) :
     for subarea in children :
         if len(subarea.children) > 0 :
             draw_partition(array, subarea.children, depth + 1)
@@ -417,6 +463,11 @@ def draw_partition(array, children, depth = 0) :
             else :
                 array[x1 + 1 : x2, y1 + 1 : y2, :] = color_sampler(subarea.type) / 4
 
+def draw_partition(array, room_list) :
+    for room in room_list :
+        (x1, y1, x2, y2) = (int(room.rectangle.x1), int(room.rectangle.y1), int(room.rectangle.x2), int(room.rectangle.y2))
+        array[x1 + 1 : x2, y1 + 1 : y2, :] = color_sampler(room.type) / 4
+
 def draw_vertex(array, partition_graph) :
     min_vertex_value = dict()
     for (vertex, edges) in partition_graph.graph.items() :
@@ -425,15 +476,14 @@ def draw_vertex(array, partition_graph) :
                 min_vertex_value[v] = w
                 array[int(v.x), int(v.y), :] = color_sampler(w)
 
-# prefer list of room over room_index_dictionary
-def draw_connection(array, room_index_dictionary) :
+def draw_connection(array, room_list) :
     drew = set()
-    for connect_from_room in room_index_dictionary.values() :
-        for connect_to_room in connect_from_room.connection :
-            if connect_to_room in drew :
+    for source_room in room_list :
+        for destination_room in source_room.connection :
+            if destination_room in drew :
                 continue
-            for i in range(len(connect_from_room.connection[connect_to_room])) :
-                (first_point, second_point, color) = connect_from_room.connection[connect_to_room][i]
+            for i in range(len(source_room.connection[destination_room])) :
+                (first_point, second_point, color) = source_room.connection[destination_room][i]
                 if first_point.x > second_point.x or first_point.y > second_point.y :
                     (first_point, second_point) = (second_point, first_point)
                 (x1, y1, x2, y2) = (int(first_point.x), int(first_point.y), int(second_point.x), int(second_point.y))
@@ -441,12 +491,18 @@ def draw_connection(array, room_index_dictionary) :
                     array[x1, random.randint(y1 + 1, y2 - 1), :] = color_sampler(color)
                 else :
                     array[random.randint(x1 + 1, x2 - 1), y2, :] = color_sampler(color)
-        drew.add(connect_from_room)
+        drew.add(source_room)
 
+def draw_furniture(array, room_list) :
+    for room in room_list :
+        for furniture in room.furniture :
+            (furniture_x, furniture_y) = (int(furniture.rectangle.x1), int(furniture.rectangle.y1))
+            (furniture_width, furniture_height) = (int(furniture.rectangle.width()), int(furniture.rectangle.height()))
+            array[furniture_x : furniture_x + furniture_width, furniture_y : furniture_y + furniture_height, :] = color_sampler(6)
 
 while True :
 
-    print('generate')
+    #print('generate')
 
     # phum's list generation
     (room_count, first_breadth) = (16, 3)
@@ -457,12 +513,12 @@ while True :
     random.shuffle(phums_list)
     phums_list = [[random.randint(2, 10) for j in range(phums_list[i])] for i in range(first_breadth)]
     #phums_list = [[1, 2, 3], [4, 5], [6, 7]]
-    print(phums_list)
+    #print(phums_list)
 
     # generate area hierarchy
     area_index_dictionary = dict()
     room_index_dictionary = dict()
-    phums_area_hierarchy(phums_list, area_index_dictionary, room_index_dictionary)
+    generate_phums_area_hierarchy(phums_list, area_index_dictionary, room_index_dictionary)
 
     # partition and geometrize
     boundary_rectangle = rectangle(0, 0, (1 + random.random()) * 50, (1 + random.random()) * 50)
@@ -470,18 +526,25 @@ while True :
     room_point_dictionary = dict()
     partition_graph = graph()
     partition([partition_root_area], boundary_rectangle, 0, partition_graph)
-    geometrize(room_index_dictionary, partition_graph, room_point_dictionary)
+    geometrize(room_index_dictionary.values(), partition_graph, room_point_dictionary)
 
     # generate connection
     connection_root_room = random.choice(list(room_index_dictionary.values()))
     connection_root_room.type = 0
-    generate_tree_connection(connection_root_room, room_index_dictionary, room_point_dictionary)
-    phums_additional_tree_connection(connection_root_room, room_point_dictionary, 2, 3)
+    generate_tree_connection(connection_root_room, room_index_dictionary.values(), room_point_dictionary)
+    generate_phums_additional_tree_connection(connection_root_room, room_point_dictionary, 2, 3)
+
+    viable_furniture_list = [(1, 1, False), (1, 1, True), (2, 1, False), (2, 1, True), (1, 2, False), (1, 2, True), (2, 3, False), (2, 3, True)]
+    viable_furniture = dict()
+    for i in range(12) :
+        viable_furniture[i] = viable_furniture_list
+    furnish(room_index_dictionary.values(), viable_furniture)
 
     array = np.ones((int(boundary_rectangle.width()) + 1, int(boundary_rectangle.height()) + 1, 3))
-    draw_partition(array, [partition_root_area])
+    draw_partition(array, room_index_dictionary.values())
     #draw_vertex(array, partition_graph)
-    draw_connection(array, room_index_dictionary)
+    draw_connection(array, room_index_dictionary.values())
+    draw_furniture(array, room_index_dictionary.values())
     
     plt.imshow(array)
     plt.show()
