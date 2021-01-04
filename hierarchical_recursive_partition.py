@@ -266,7 +266,7 @@ def generate_tree_connection(connection_root_room, room_list, room_point_diction
             available_connection[adjacent_room].append((connection_root_room, (first_point, second_point)))
     while len(connected) != len(room_list) :
         if len(available_connection) == 0 :
-            print('unreachable room exist')
+            #print('unreachable room exist')
             return False
         second_room = random.choice(list(available_connection.keys()))
         (first_room, (first_point, second_point)) = random.choice(list(available_connection.pop(second_room)))
@@ -405,7 +405,7 @@ def furnish(room_list, viable_furniture) :
             (furniture_padding_width, furniture_padding_height) = selected_furniture[2]
             (furniture_margin_width, furniture_margin_height) = selected_furniture[3]
             (furniture_dx, furniture_dy) = (furniture_margin_width - furniture_padding_width, furniture_margin_height - furniture_padding_height)
-            if furniture_margin_width >= room_width or furniture_margin_height >= room_height :
+            if furniture_margin_width >= room_width - 2 or furniture_margin_height >= room_height :
                 continue
             for j in range(5) : # number of attempt
                 if furniture_wall :
@@ -509,7 +509,7 @@ while True :
     #print('generate')
 
     # phum's list generation
-    (room_count, first_breadth) = (11, 3)
+    (room_count, first_breadth) = (12, 3)
     phums_list = [0.5 + random.random() for i in range(first_breadth)]
     phums_list = [round((sum(phums_list[:i + 1]) / sum(phums_list)) * (room_count - first_breadth)) for i in range(first_breadth)]
     phums_list[1:] = [phums_list[i] - phums_list[i - 1] for i in range(1, first_breadth)]
@@ -525,7 +525,7 @@ while True :
     generate_phums_area_hierarchy(partition_root_area, phums_list, room_list)
 
     # partition and geometrize
-    boundary_rectangle = rectangle(0, 0, 50, 50)
+    boundary_rectangle = rectangle(0, 0, 50 * (0.5 + random.random()), 50 * (0.5 + random.random()))
     partition_graph = graph()
     partition([partition_root_area], boundary_rectangle, 0, partition_graph)
 
@@ -535,8 +535,9 @@ while True :
     # generate connection
     connection_root_room = random.choice(room_list)
     connection_root_room.type = 0
-    tree_connection_result = generate_tree_connection(connection_root_room, room_list, room_point_dictionary)
-    if tree_connection_result == False :
+    tree_connection_status = generate_tree_connection(connection_root_room, room_list, room_point_dictionary)
+    if tree_connection_status == False :
+        print('unreachable room exist,', 'retry')
         continue
     generate_phums_additional_connection(connection_root_room, room_list, room_point_dictionary, 2, 3)
 
